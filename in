@@ -13,11 +13,37 @@ cd "$GIT_DEST_DIR"
 [[ -x gradlew ]] || { echo "There is no gradle wrapper in the project root" >&2; exit 1; }
 
 cat >>build.gradle <<-EOF
-  allprojects {
-    task __cacheDependencies << {
-      configurations.forEach { it.files }
+
+allprojects {
+    //So in version 3.4 onward we need to do something different.
+    //Split up the gradle version like you do
+    //Going to assume that the gradle version is at least two digits "3.4"
+    //In the shell script there's quad backslashes, because escaping
+    def split = "\${gradle.gradleVersion}".split("\\\\.")
+
+    if (split[0].toInteger() >= 3 && split[1].toInteger() >= 4) {
+        //Define a different kind of task for 3.4 onward
+        task __cacheDependencies {
+            doLast {
+                logger.lifecycle("Resolving configurations for gradle 3.4 onward")
+                configurations.forEach { configuration ->
+                    if (Configuration.metaClass.respondsTo(configuration, "isCanBeResolved") && !configuration.isCanBeResolved()) {
+                        return
+                    }
+                    configuration.resolve()
+                }
+            }
+        }
+    } else {
+        //Do it the old way
+        task __cacheDependencies {
+            doLast {
+                logger.lifecycle("Resolving configuration for gradle < 3.4")
+                configurations.forEach { it.files }
+            }
+        }
     }
-  }
+}
 EOF
 
 ./gradlew __cacheDependencies >&2
